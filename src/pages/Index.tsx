@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Player, Crime, Weapon } from "@/types/game";
+import { DailyMission, CityEvent } from "@/types/achievements";
 import {
   createNewPlayer,
   saveGameState,
@@ -14,6 +15,7 @@ import {
   healPlayer,
   trainStat,
 } from "@/lib/gameLogic";
+import { checkAchievements, generateDailyMissions, getRandomEvent } from "@/lib/achievements";
 import { GameHeader } from "@/components/GameHeader";
 import { GameSidebar } from "@/components/GameSidebar";
 import { CrimesSection } from "@/components/sections/CrimesSection";
@@ -22,6 +24,9 @@ import { HospitalSection } from "@/components/sections/HospitalSection";
 import { BankSection } from "@/components/sections/BankSection";
 import { WeaponsSection } from "@/components/sections/WeaponsSection";
 import { DrugsSection } from "@/components/sections/DrugsSection";
+import { AchievementsSection } from "@/components/sections/AchievementsSection";
+import { MissionsSection } from "@/components/sections/MissionsSection";
+import { StatsOverviewSection } from "@/components/sections/StatsOverviewSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -32,6 +37,9 @@ const Index = () => {
   const [activeSection, setActiveSection] = useState("crimes");
   const [playerName, setPlayerName] = useState("");
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
+  const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(generateDailyMissions());
+  const [activeEvent, setActiveEvent] = useState<(CityEvent & { timeLeft: number }) | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,12 +49,87 @@ const Index = () => {
       setPlayer(updatedPlayer);
       setLastUpdate(Date.now());
     }
+
+    // Carregar conquistas
+    const savedAchievements = localStorage.getItem("crimcity_achievements");
+    if (savedAchievements) {
+      setUnlockedAchievements(JSON.parse(savedAchievements));
+    }
+
+    // Carregar missões
+    const savedMissions = localStorage.getItem("crimcity_missions");
+    const lastMissionReset = localStorage.getItem("crimcity_mission_reset");
+    const now = Date.now();
+    const dayInMs = 24 * 60 * 60 * 1000;
+
+    if (savedMissions && lastMissionReset && (now - parseInt(lastMissionReset)) < dayInMs) {
+      setDailyMissions(JSON.parse(savedMissions));
+    } else {
+      const newMissions = generateDailyMissions();
+      setDailyMissions(newMissions);
+      localStorage.setItem("crimcity_missions", JSON.stringify(newMissions));
+      localStorage.setItem("crimcity_mission_reset", now.toString());
+    }
   }, []);
 
   useEffect(() => {
     if (!player) return;
 
+    // Verificar conquistas
+    const { newUnlocked, updatedList } = checkAchievements(player, unlockedAchievements);
+    if (newUnlocked.length > 0) {
+      setUnlockedAchievements(updatedList);
+      localStorage.setItem("crimcity_achievements", JSON.stringify(updatedList));
+      
+      newUnlocked.forEach((achievement) => {
+        toast({
+          title: `🏆 Conquista Desbloqueada!`,
+          description: `${achievement.icon} ${achievement.name}`,
+        });
+        
+        // Dar recompensa
+        if (achievement.reward.money || achievement.reward.respect) {
+          setPlayer((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              money: prev.money + (achievement.reward.money || 0),
+              respect: prev.respect + (achievement.reward.respect || 0),
+            };
+          });
+        }
+      });
+    }
+
     const interval = setInterval(() => {
+      // Chance de evento aleatório
+      if (!activeEvent && Math.random() < 0.01) {
+        const event = getRandomEvent();
+        if (event) {
+          setActiveEvent({ ...event, timeLeft: event.duration });
+          toast({
+            title: event.title,
+            description: event.description,
+          });
+        }
+      }
+
+      // Reduz tempo do evento
+      if (activeEvent) {
+        setActiveEvent((prev) => {
+          if (!prev) return null;
+          const newTimeLeft = prev.timeLeft - 1;
+          if (newTimeLeft <= 0) {
+            toast({
+              title: "Evento Encerrado",
+              description: `${prev.title} terminou!`,
+            });
+            return null;
+          }
+          return { ...prev, timeLeft: newTimeLeft };
+        });
+      }
+
       setPlayer((prev) => {
         if (!prev) return prev;
         
@@ -76,13 +159,16 @@ const Index = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [player, toast]);
+  }, [player, toast, unlockedAchievements, activeEvent]);
 
   useEffect(() => {
     if (player) {
       saveGameState(player);
     }
-  }, [player, lastUpdate]);
+    if (dailyMissions) {
+      localStorage.setItem("crimcity_missions", JSON.stringify(dailyMissions));
+    }
+  }, [player, lastUpdate, dailyMissions]);
 
   const handleStartGame = () => {
     if (playerName.trim()) {
@@ -101,6 +187,18 @@ const Index = () => {
     
     const result = executeCrime(crime, player);
     setPlayer(result.player);
+    
+    // Atualizar missões
+    if (result.success) {
+      setDailyMissions((prev) =>
+        prev.map((mission) => {
+          if (mission.requirement.type === "crimes" && !mission.completed) {
+            return { ...mission, progress: mission.progress + 1 };
+          }
+          return mission;
+        })
+      );
+    }
     
     toast({
       title: result.success ? "✅ Crime bem-sucedido!" : "❌ Crime falhou!",
@@ -193,10 +291,45 @@ const Index = () => {
     const result = trainStat(stat, player);
     setPlayer(result.player);
     
+    // Atualizar missões
+    if (result.success) {
+      setDailyMissions((prev) =>
+        prev.map((mission) => {
+          if (mission.requirement.type === "training" && !mission.completed) {
+            return { ...mission, progress: mission.progress + 1 };
+          }
+          return mission;
+        })
+      );
+    }
+    
     toast({
       title: result.success ? "💪 Treino concluído!" : "❌ Falha no treino",
       description: result.message,
       variant: result.success ? "default" : "destructive",
+    });
+  };
+
+  const handleClaimMissionReward = (missionId: string) => {
+    const mission = dailyMissions.find((m) => m.id === missionId);
+    if (!mission || !player) return;
+
+    setPlayer((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        money: prev.money + mission.reward.money,
+        respect: prev.respect + mission.reward.respect,
+      };
+    });
+
+    setDailyMissions((prev) =>
+      prev.map((m) => (m.id === missionId ? { ...m, completed: true } : m))
+    );
+
+    toast({
+      title: "🎁 Recompensa Resgatada!",
+      description: `+$${mission.reward.money} e +${mission.reward.respect} respeito`,
     });
   };
 
@@ -247,7 +380,14 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto">
-        <GameHeader player={player} />
+        <GameHeader 
+          player={player} 
+          activeEvent={activeEvent ? {
+            title: activeEvent.title,
+            icon: activeEvent.icon,
+            timeLeft: activeEvent.timeLeft
+          } : null}
+        />
         
         <div className="grid lg:grid-cols-4 gap-4">
           <div className="lg:col-span-1">
@@ -281,6 +421,21 @@ const Index = () => {
                   onBuyDrug={handleBuyDrug}
                   onSellDrug={handleSellDrug}
                 />
+              )}
+              {activeSection === "missions" && (
+                <MissionsSection
+                  missions={dailyMissions}
+                  onClaimReward={handleClaimMissionReward}
+                />
+              )}
+              {activeSection === "achievements" && (
+                <AchievementsSection
+                  player={player}
+                  unlockedAchievements={unlockedAchievements}
+                />
+              )}
+              {activeSection === "overview" && (
+                <StatsOverviewSection player={player} />
               )}
             </Card>
           </div>
