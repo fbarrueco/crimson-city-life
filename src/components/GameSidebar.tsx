@@ -1,5 +1,6 @@
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Swords, Dumbbell, Hospital, Landmark, Crosshair, Pill, Trophy, ListTodo, BarChart3 } from "lucide-react";
 
 interface GameSidebarProps {
   activeSection: string;
@@ -7,12 +8,15 @@ interface GameSidebarProps {
 }
 
 const sections = [
-  { id: "crimes", label: "🔪 Crimes", color: "danger" },
-  { id: "stats", label: "💪 Treinar", color: "primary" },
-  { id: "hospital", label: "🏥 Hospital", color: "success" },
-  { id: "bank", label: "🏦 Banco", color: "accent" },
-  { id: "weapons", label: "🔫 Armas", color: "destructive" },
-  { id: "drugs", label: "💊 Drogas", color: "warning" },
+  { id: "crimes", label: "Crimes", icon: Swords },
+  { id: "stats", label: "Treinar", icon: Dumbbell },
+  { id: "hospital", label: "Hospital", icon: Hospital },
+  { id: "bank", label: "Banco", icon: Landmark },
+  { id: "weapons", label: "Armas", icon: Crosshair },
+  { id: "drugs", label: "Drogas", icon: Pill },
+  { id: "missions", label: "Missões", icon: ListTodo },
+  { id: "achievements", label: "Conquistas", icon: Trophy },
+  { id: "overview", label: "Estatísticas", icon: BarChart3 },
 ];
 
 export function GameSidebar({ activeSection, onSectionChange }: GameSidebarProps) {
@@ -20,16 +24,20 @@ export function GameSidebar({ activeSection, onSectionChange }: GameSidebarProps
     <Card className="p-4 border-border bg-card sticky top-4">
       <h2 className="text-xl font-bold text-primary mb-4">🏙️ CrimCity</h2>
       <div className="space-y-2">
-        {sections.map((section) => (
-          <Button
-            key={section.id}
-            variant={activeSection === section.id ? "default" : "secondary"}
-            className="w-full justify-start"
-            onClick={() => onSectionChange(section.id)}
-          >
-            {section.label}
-          </Button>
-        ))}
+        {sections.map((section) => {
+          const Icon = section.icon;
+          return (
+            <Button
+              key={section.id}
+              variant={activeSection === section.id ? "default" : "secondary"}
+              className="w-full justify-start"
+              onClick={() => onSectionChange(section.id)}
+            >
+              <Icon className="h-4 w-4 mr-2" />
+              {section.label}
+            </Button>
+          );
+        })}
       </div>
     </Card>
   );
