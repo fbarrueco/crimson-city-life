@@ -5,6 +5,8 @@ export interface PlayerStats {
   tolerance: number;
 }
 
+export type Profession = "thug" | "hacker" | "dealer" | "conman" | "enforcer";
+
 export interface Player {
   name: string;
   level: number;
@@ -18,10 +20,12 @@ export interface Player {
   stats: PlayerStats;
   weapons: Weapon[];
   drugs: Drug[];
+  profession: Profession | null;
   inPrison: boolean;
   prisonTime: number;
   crimes: number;
   successfulCrimes: number;
+  businesses: string[];
 }
 
 export interface Crime {
@@ -50,7 +54,52 @@ export interface Drug {
   sellPrice: number;
 }
 
+export interface DrugOrder {
+  id: string;
+  drugId: string;
+  type: "buy" | "sell";
+  orderType: "market" | "limit";
+  quantity: number;
+  price?: number;
+  playerId: string;
+  playerName: string;
+  timestamp: number;
+}
+
+export interface DrugOrderBook {
+  drugId: string;
+  buyOrders: DrugOrder[];
+  sellOrders: DrugOrder[];
+}
+
+export interface CityLot {
+  id: string;
+  x: number;
+  y: number;
+  district: "downtown" | "industrial" | "suburbs" | "port" | "slums";
+  basePrice: number;
+  modifier: number;
+  ownerId: string | null;
+  businessId: string | null;
+}
+
+export interface Business {
+  id: string;
+  name: string;
+  type: "nightclub" | "casino" | "druglab" | "chop_shop" | "brothel";
+  ownerId: string;
+  ownerName: string;
+  lotId: string;
+  level: number;
+  income: number;
+  popularity: number;
+  lastCollection: number;
+}
+
 export interface GameState {
   player: Player;
   lastUpdate: number;
+  drugOrders: DrugOrder[];
+  cityLots: CityLot[];
+  businesses: Business[];
 }

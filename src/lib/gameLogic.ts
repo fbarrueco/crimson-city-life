@@ -92,6 +92,14 @@ export const drugTypes = [
   { id: "meth", name: "Metanfetamina", basePrice: 150 },
 ];
 
+export const professions = [
+  { id: "thug", name: "Capanga", bonus: { strength: 5 }, crimeBonus: 10 },
+  { id: "hacker", name: "Hacker", bonus: { intelligence: 5 }, crimeBonus: 15 },
+  { id: "dealer", name: "Traficante", bonus: { charisma: 5 }, drugBonus: 20 },
+  { id: "conman", name: "Golpista", bonus: { charisma: 3, intelligence: 3 }, crimeBonus: 12 },
+  { id: "enforcer", name: "Executor", bonus: { strength: 3, tolerance: 3 }, combatBonus: 15 },
+];
+
 export function createNewPlayer(name: string): Player {
   return {
     name,
@@ -111,17 +119,22 @@ export function createNewPlayer(name: string): Player {
     },
     weapons: [],
     drugs: [],
+    profession: null,
     inPrison: false,
     prisonTime: 0,
     crimes: 0,
     successfulCrimes: 0,
+    businesses: [],
   };
 }
 
-export function saveGameState(player: Player): void {
+export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: any[] = [], businesses: any[] = []): void {
   const gameState: GameState = {
     player,
     lastUpdate: Date.now(),
+    drugOrders,
+    cityLots,
+    businesses,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
 }
@@ -150,9 +163,30 @@ export function updateEnergyRegen(player: Player, lastUpdate: number): Player {
 
 export function calculateCrimeSuccess(crime: Crime, player: Player): boolean {
   const baseChance = crime.successChance;
-  const statBonus = (player.stats.intelligence + player.stats.strength) / 10;
-  const levelBonus = player.level * 2;
-  const finalChance = Math.min(95, baseChance + statBonus + levelBonus);
+  
+  // Bonus de stats (mais equilibrado)
+  const statBonus = (player.stats.intelligence + player.stats.strength) / 20;
+  
+  // Bonus de nível (reduzido)
+  const levelBonus = player.level * 1.5;
+  
+  // Bonus de arma (melhor arma = mais sucesso)
+  let weaponBonus = 0;
+  if (player.weapons.length > 0) {
+    const bestWeapon = player.weapons.reduce((a, b) => a.damage > b.damage ? a : b);
+    weaponBonus = bestWeapon.damage / 10;
+  }
+  
+  // Bonus de profissão
+  let professionBonus = 0;
+  if (player.profession) {
+    const prof = professions.find(p => p.id === player.profession);
+    if (prof?.crimeBonus) {
+      professionBonus = prof.crimeBonus;
+    }
+  }
+  
+  const finalChance = Math.min(95, baseChance + statBonus + levelBonus + weaponBonus + professionBonus);
   
   return Math.random() * 100 < finalChance;
 }

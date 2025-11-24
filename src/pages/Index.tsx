@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Player, Crime, Weapon } from "@/types/game";
+import { Player, Crime, Weapon, Profession, DrugOrder, CityLot, Business } from "@/types/game";
 import { DailyMission, CityEvent } from "@/types/achievements";
 import {
   createNewPlayer,
@@ -14,8 +14,11 @@ import {
   withdrawMoney,
   healPlayer,
   trainStat,
+  professions,
 } from "@/lib/gameLogic";
 import { checkAchievements, generateDailyMissions, getRandomEvent } from "@/lib/achievements";
+import { generateCityMap, businessTypes, calculateBusinessIncome } from "@/lib/cityMap";
+import { createDrugOrder, matchOrders, getOrderBook } from "@/lib/drugMarket";
 import { GameHeader } from "@/components/GameHeader";
 import { GameSidebar } from "@/components/GameSidebar";
 import { CrimesSection } from "@/components/sections/CrimesSection";
@@ -27,6 +30,9 @@ import { DrugsSection } from "@/components/sections/DrugsSection";
 import { AchievementsSection } from "@/components/sections/AchievementsSection";
 import { MissionsSection } from "@/components/sections/MissionsSection";
 import { StatsOverviewSection } from "@/components/sections/StatsOverviewSection";
+import { ProfessionSection } from "@/components/sections/ProfessionSection";
+import { EnhancedDrugsSection } from "@/components/sections/EnhancedDrugsSection";
+import { CityMapSection } from "@/components/sections/CityMapSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -40,6 +46,9 @@ const Index = () => {
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(generateDailyMissions());
   const [activeEvent, setActiveEvent] = useState<(CityEvent & { timeLeft: number }) | null>(null);
+  const [drugOrders, setDrugOrders] = useState<DrugOrder[]>([]);
+  const [cityLots, setCityLots] = useState<CityLot[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -48,6 +57,18 @@ const Index = () => {
       const updatedPlayer = updateEnergyRegen(savedState.player, savedState.lastUpdate);
       setPlayer(updatedPlayer);
       setLastUpdate(Date.now());
+      
+      // Carregar ou inicializar dados do mundo
+      if (savedState.drugOrders) setDrugOrders(savedState.drugOrders);
+      if (savedState.cityLots && savedState.cityLots.length > 0) {
+        setCityLots(savedState.cityLots);
+      } else {
+        setCityLots(generateCityMap());
+      }
+      if (savedState.businesses) setBusinesses(savedState.businesses);
+    } else {
+      // Inicializar mapa para novo jogo
+      setCityLots(generateCityMap());
     }
 
     // Carregar conquistas
@@ -163,18 +184,20 @@ const Index = () => {
 
   useEffect(() => {
     if (player) {
-      saveGameState(player);
+      saveGameState(player, drugOrders, cityLots, businesses);
     }
     if (dailyMissions) {
       localStorage.setItem("crimcity_missions", JSON.stringify(dailyMissions));
     }
-  }, [player, lastUpdate, dailyMissions]);
+  }, [player, lastUpdate, dailyMissions, drugOrders, cityLots, businesses]);
 
   const handleStartGame = () => {
     if (playerName.trim()) {
       const newPlayer = createNewPlayer(playerName.trim());
       setPlayer(newPlayer);
-      saveGameState(newPlayer);
+      const initialLots = generateCityMap();
+      setCityLots(initialLots);
+      saveGameState(newPlayer, [], initialLots, []);
       toast({
         title: "🎮 Bem-vindo a CrimCity!",
         description: `Boa sorte, ${playerName}!`,
@@ -310,6 +333,123 @@ const Index = () => {
     });
   };
 
+  const handleSelectProfession = (profession: Profession) => {
+    if (!player || player.profession) return;
+    
+    const prof = professions.find(p => p.id === profession);
+    if (!prof) return;
+    
+    const updatedPlayer = { ...player, profession };
+    
+    // Aplicar bônus de stats
+    Object.entries(prof.bonus).forEach(([stat, bonus]) => {
+      updatedPlayer.stats[stat as keyof Player["stats"]] += bonus;
+    });
+    
+    setPlayer(updatedPlayer);
+    toast({
+      title: "💼 Profissão escolhida!",
+      description: `Você agora é ${prof.name}!`,
+    });
+  };
+
+  const handlePlaceDrugOrder = (
+    drugId: string,
+    type: "buy" | "sell",
+    orderType: "market" | "limit",
+    quantity: number,
+    price?: number
+  ) => {
+    if (!player) return;
+    
+    const newOrder = createDrugOrder(drugId, type, orderType, quantity, price, player);
+    const orderBook = getOrderBook(drugId, drugOrders);
+    const result = matchOrders(newOrder, orderBook, player);
+    
+    if (result.success) {
+      setPlayer(result.player);
+      
+      // Remover ordens correspondidas
+      const matchedIds = result.matchedOrders.map(o => o.id);
+      setDrugOrders(prev => prev.filter(o => !matchedIds.includes(o.id)));
+      
+      // Adicionar ordem restante se houver
+      if (result.remainingOrder) {
+        setDrugOrders(prev => [...prev, result.remainingOrder!]);
+      }
+    }
+    
+    toast({
+      title: result.success ? "📊 Ordem executada!" : "❌ Falha na ordem",
+      description: result.message,
+      variant: result.success ? "default" : "destructive",
+    });
+  };
+
+  const handleBuyLot = (lotId: string) => {
+    if (!player) return;
+    
+    const lot = cityLots.find(l => l.id === lotId);
+    if (!lot || lot.ownerId || player.money < lot.basePrice) {
+      toast({
+        title: "❌ Não foi possível comprar",
+        description: "Dinheiro insuficiente ou terreno já possui dono.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setPlayer({ ...player, money: player.money - lot.basePrice });
+    setCityLots(prev => prev.map(l => 
+      l.id === lotId ? { ...l, ownerId: player.name } : l
+    ));
+    
+    toast({
+      title: "🏘️ Terreno comprado!",
+      description: `Você comprou um terreno por $${lot.basePrice}!`,
+    });
+  };
+
+  const handleBuildBusiness = (lotId: string, businessType: string) => {
+    if (!player) return;
+    
+    const lot = cityLots.find(l => l.id === lotId);
+    const bizType = businessTypes.find(b => b.id === businessType);
+    
+    if (!lot || !bizType || lot.ownerId !== player.name || player.money < bizType.cost) {
+      toast({
+        title: "❌ Não foi possível construir",
+        description: "Verifique os requisitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newBusiness: Business = {
+      id: `biz_${Date.now()}`,
+      name: `${bizType.name} de ${player.name}`,
+      type: businessType as any,
+      ownerId: player.name,
+      ownerName: player.name,
+      lotId,
+      level: 1,
+      income: calculateBusinessIncome({ level: 1, popularity: 50 } as Business, lot),
+      popularity: 50,
+      lastCollection: Date.now(),
+    };
+    
+    setPlayer({ ...player, money: player.money - bizType.cost, businesses: [...player.businesses, newBusiness.id] });
+    setBusinesses(prev => [...prev, newBusiness]);
+    setCityLots(prev => prev.map(l => 
+      l.id === lotId ? { ...l, businessId: newBusiness.id } : l
+    ));
+    
+    toast({
+      title: "🏢 Negócio construído!",
+      description: `${bizType.name} aberto com sucesso!`,
+    });
+  };
+
   const handleClaimMissionReward = (missionId: string) => {
     const mission = dailyMissions.find((m) => m.id === missionId);
     if (!mission || !player) return;
@@ -416,10 +556,25 @@ const Index = () => {
                 <WeaponsSection player={player} onBuyWeapon={handleBuyWeapon} />
               )}
               {activeSection === "drugs" && (
-                <DrugsSection
+                <EnhancedDrugsSection
                   player={player}
-                  onBuyDrug={handleBuyDrug}
-                  onSellDrug={handleSellDrug}
+                  allOrders={drugOrders}
+                  onPlaceOrder={handlePlaceDrugOrder}
+                />
+              )}
+              {activeSection === "profession" && (
+                <ProfessionSection 
+                  player={player} 
+                  onSelectProfession={handleSelectProfession} 
+                />
+              )}
+              {activeSection === "businesses" && (
+                <CityMapSection
+                  cityLots={cityLots}
+                  businesses={businesses}
+                  player={player}
+                  onBuyLot={handleBuyLot}
+                  onBuildBusiness={handleBuildBusiness}
                 />
               )}
               {activeSection === "missions" && (
