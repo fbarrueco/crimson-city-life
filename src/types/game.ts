@@ -83,6 +83,27 @@ export interface CityLot {
   businessId: string | null;
 }
 
+export interface BusinessEmployee {
+  id: string;
+  name: string;
+  type: "security" | "manager" | "dealer" | "promoter";
+  skill: number;
+  salary: number;
+}
+
+export interface BusinessEvent {
+  id: string;
+  type: "raid" | "vip_client" | "competition" | "renovation" | "trouble";
+  title: string;
+  description: string;
+  effect: {
+    popularity?: number;
+    income?: number;
+    duration?: number;
+  };
+  timestamp: number;
+}
+
 export interface Business {
   id: string;
   name: string;
@@ -94,6 +115,11 @@ export interface Business {
   income: number;
   popularity: number;
   lastCollection: number;
+  employees: BusinessEmployee[];
+  activeEvent: BusinessEvent | null;
+  accumulatedIncome: number;
+  security: number;
+  quality: number;
 }
 
 export interface GameState {
