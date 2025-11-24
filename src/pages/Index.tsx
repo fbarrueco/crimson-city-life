@@ -17,7 +17,7 @@ import {
   professions,
 } from "@/lib/gameLogic";
 import { checkAchievements, generateDailyMissions, getRandomEvent } from "@/lib/achievements";
-import { generateCityMap, businessTypes, calculateBusinessIncome } from "@/lib/cityMap";
+import { generateCityMap, businessTypes, calculateBusinessIncome, getUpgradeCost, generateBusinessEvent, employeeTypes } from "@/lib/cityMap";
 import { createDrugOrder, matchOrders, getOrderBook } from "@/lib/drugMarket";
 import { GameHeader } from "@/components/GameHeader";
 import { GameSidebar } from "@/components/GameSidebar";
@@ -33,6 +33,7 @@ import { StatsOverviewSection } from "@/components/sections/StatsOverviewSection
 import { ProfessionSection } from "@/components/sections/ProfessionSection";
 import { EnhancedDrugsSection } from "@/components/sections/EnhancedDrugsSection";
 import { CityMapSection } from "@/components/sections/CityMapSection";
+import { BusinessManagementSection } from "@/components/sections/BusinessManagementSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -150,6 +151,55 @@ const Index = () => {
           return { ...prev, timeLeft: newTimeLeft };
         });
       }
+
+      // Atualizar negócios
+      setBusinesses((prev) =>
+        prev.map((business) => {
+          const lot = cityLots.find(l => l.id === business.lotId);
+          if (!lot) return business;
+
+          const now = Date.now();
+          const hoursPassed = (now - business.lastCollection) / (1000 * 60 * 60);
+          const income = calculateBusinessIncome(business, lot);
+          const newAccumulated = business.accumulatedIncome + Math.floor(income * hoursPassed);
+
+          // Chance de evento
+          if (!business.activeEvent && Math.random() < 0.001) {
+            const event = generateBusinessEvent(business);
+            if (event) {
+              toast({
+                title: event.title,
+                description: event.description,
+              });
+              return {
+                ...business,
+                activeEvent: event,
+                accumulatedIncome: newAccumulated,
+                lastCollection: now,
+              };
+            }
+          }
+
+          // Processar efeitos de eventos ativos
+          if (business.activeEvent) {
+            const eventDuration = (now - business.activeEvent.timestamp) / 1000;
+            if (eventDuration >= (business.activeEvent.effect.duration || 0)) {
+              return {
+                ...business,
+                activeEvent: null,
+                accumulatedIncome: newAccumulated,
+                lastCollection: now,
+              };
+            }
+          }
+
+          return {
+            ...business,
+            accumulatedIncome: newAccumulated,
+            lastCollection: now,
+          };
+        })
+      );
 
       setPlayer((prev) => {
         if (!prev) return prev;
@@ -433,9 +483,14 @@ const Index = () => {
       ownerName: player.name,
       lotId,
       level: 1,
-      income: calculateBusinessIncome({ level: 1, popularity: 50 } as Business, lot),
+      income: calculateBusinessIncome({ level: 1, popularity: 50, quality: 50, security: 30, employees: [] } as Business, lot),
       popularity: 50,
       lastCollection: Date.now(),
+      employees: [],
+      activeEvent: null,
+      accumulatedIncome: 0,
+      security: 30,
+      quality: 50,
     };
     
     setPlayer({ ...player, money: player.money - bizType.cost, businesses: [...player.businesses, newBusiness.id] });
@@ -447,6 +502,122 @@ const Index = () => {
     toast({
       title: "🏢 Negócio construído!",
       description: `${bizType.name} aberto com sucesso!`,
+    });
+  };
+
+  const handleCollectIncome = (businessId: string) => {
+    if (!player) return;
+    
+    const business = businesses.find(b => b.id === businessId);
+    if (!business || business.accumulatedIncome === 0) return;
+    
+    setPlayer({ ...player, money: player.money + business.accumulatedIncome });
+    setBusinesses(prev => prev.map(b =>
+      b.id === businessId ? { ...b, accumulatedIncome: 0, lastCollection: Date.now() } : b
+    ));
+    
+    toast({
+      title: "💰 Renda coletada!",
+      description: `Você coletou $${business.accumulatedIncome}!`,
+    });
+  };
+
+  const handleUpgradeBusiness = (businessId: string) => {
+    if (!player) return;
+    
+    const business = businesses.find(b => b.id === businessId);
+    if (!business) return;
+    
+    const upgradeCost = getUpgradeCost(business);
+    const bizType = businessTypes.find(b => b.id === business.type);
+    
+    if (!bizType || business.level >= bizType.maxLevel || player.money < upgradeCost) {
+      toast({
+        title: "❌ Upgrade não disponível",
+        description: "Verifique requisitos ou nível máximo.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setPlayer({ ...player, money: player.money - upgradeCost });
+    setBusinesses(prev => prev.map(b =>
+      b.id === businessId ? { ...b, level: b.level + 1 } : b
+    ));
+    
+    toast({
+      title: "⬆️ Negócio melhorado!",
+      description: `${business.name} agora é nível ${business.level + 1}!`,
+    });
+  };
+
+  const handleHireEmployee = (businessId: string, employeeType: string) => {
+    if (!player) return;
+    
+    const business = businesses.find(b => b.id === businessId);
+    const empType = employeeTypes.find(e => e.type === employeeType);
+    
+    if (!business || !empType) return;
+    
+    const hiringCost = empType.baseSalary * 7; // 1 semana adiantado
+    
+    if (player.money < hiringCost) {
+      toast({
+        title: "❌ Dinheiro insuficiente",
+        description: `Você precisa de $${hiringCost} para contratar.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newEmployee = {
+      id: `emp_${Date.now()}`,
+      name: `${empType.name} ${Math.floor(Math.random() * 100)}`,
+      type: employeeType as any,
+      skill: 50 + Math.floor(Math.random() * 50),
+      salary: empType.baseSalary,
+    };
+    
+    setPlayer({ ...player, money: player.money - hiringCost });
+    setBusinesses(prev => prev.map(b =>
+      b.id === businessId ? { ...b, employees: [...b.employees, newEmployee] } : b
+    ));
+    
+    toast({
+      title: "👔 Funcionário contratado!",
+      description: `${newEmployee.name} agora trabalha para você!`,
+    });
+  };
+
+  const handleImproveStat = (businessId: string, stat: "security" | "quality") => {
+    if (!player) return;
+    
+    const business = businesses.find(b => b.id === businessId);
+    if (!business || player.money < 5000) {
+      toast({
+        title: "❌ Não foi possível melhorar",
+        description: "Dinheiro insuficiente ou stat no máximo.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (business[stat] >= 100) {
+      toast({
+        title: "ℹ️ Máximo atingido",
+        description: "Este atributo já está no máximo!",
+      });
+      return;
+    }
+    
+    setPlayer({ ...player, money: player.money - 5000 });
+    setBusinesses(prev => prev.map(b =>
+      b.id === businessId ? { ...b, [stat]: Math.min(100, b[stat] + 10) } : b
+    ));
+    
+    toast({
+      title: "✨ Melhoria aplicada!",
+      description: `${stat === "security" ? "Segurança" : "Qualidade"} melhorada!`,
     });
   };
 
@@ -575,6 +746,17 @@ const Index = () => {
                   player={player}
                   onBuyLot={handleBuyLot}
                   onBuildBusiness={handleBuildBusiness}
+                />
+              )}
+              {activeSection === "manage_businesses" && (
+                <BusinessManagementSection
+                  player={player}
+                  businesses={businesses}
+                  cityLots={cityLots}
+                  onCollectIncome={handleCollectIncome}
+                  onUpgradeBusiness={handleUpgradeBusiness}
+                  onHireEmployee={handleHireEmployee}
+                  onImproveStat={handleImproveStat}
                 />
               )}
               {activeSection === "missions" && (
