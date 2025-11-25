@@ -72,6 +72,16 @@ export interface DrugOrderBook {
   sellOrders: DrugOrder[];
 }
 
+export interface DrugTransaction {
+  id: string;
+  drugId: string;
+  quantity: number;
+  price: number;
+  timestamp: number;
+  buyerId: string;
+  sellerId: string;
+}
+
 export interface CityLot {
   id: string;
   x: number;
@@ -128,4 +138,5 @@ export interface GameState {
   drugOrders: DrugOrder[];
   cityLots: CityLot[];
   businesses: Business[];
+  drugTransactions: DrugTransaction[];
 }

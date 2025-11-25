@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Player, Crime, Weapon, Profession, DrugOrder, CityLot, Business } from "@/types/game";
+import { Player, Crime, Weapon, Profession, DrugOrder, CityLot, Business, DrugTransaction } from "@/types/game";
 import { DailyMission, CityEvent } from "@/types/achievements";
 import {
   createNewPlayer,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/gameLogic";
 import { checkAchievements, generateDailyMissions, getRandomEvent } from "@/lib/achievements";
 import { generateCityMap, businessTypes, calculateBusinessIncome, getUpgradeCost, generateBusinessEvent, employeeTypes } from "@/lib/cityMap";
-import { createDrugOrder, matchOrders, getOrderBook } from "@/lib/drugMarket";
+import { createDrugOrder, matchOrders, getOrderBook, cleanOldTransactions } from "@/lib/drugMarket";
 import { GameHeader } from "@/components/GameHeader";
 import { GameSidebar } from "@/components/GameSidebar";
 import { CrimesSection } from "@/components/sections/CrimesSection";
@@ -50,6 +50,7 @@ const Index = () => {
   const [drugOrders, setDrugOrders] = useState<DrugOrder[]>([]);
   const [cityLots, setCityLots] = useState<CityLot[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [drugTransactions, setDrugTransactions] = useState<DrugTransaction[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -67,6 +68,7 @@ const Index = () => {
         setCityLots(generateCityMap());
       }
       if (savedState.businesses) setBusinesses(savedState.businesses);
+      if (savedState.drugTransactions) setDrugTransactions(savedState.drugTransactions);
     } else {
       // Inicializar mapa para novo jogo
       setCityLots(generateCityMap());
@@ -136,67 +138,49 @@ const Index = () => {
         }
       }
 
-      // Reduz tempo do evento
-      if (activeEvent) {
-        setActiveEvent((prev) => {
-          if (!prev) return null;
-          const newTimeLeft = prev.timeLeft - 1;
-          if (newTimeLeft <= 0) {
-            toast({
-              title: "Evento Encerrado",
-              description: `${prev.title} terminou!`,
-            });
-            return null;
-          }
-          return { ...prev, timeLeft: newTimeLeft };
-        });
-      }
+      // Reduzir tempo de evento ativo
+      setActiveEvent(prev => {
+        if (!prev) return null;
+        const newTimeLeft = prev.timeLeft - 1;
+        if (newTimeLeft <= 0) {
+          toast({
+            title: "⏰ Evento Finalizado",
+            description: `${prev.title} terminou!`,
+          });
+          return null;
+        }
+        return { ...prev, timeLeft: newTimeLeft };
+      });
 
-      // Atualizar negócios
-      setBusinesses((prev) =>
-        prev.map((business) => {
+      // Acumular renda dos negócios
+      setBusinesses(prev =>
+        prev.map(business => {
           const lot = cityLots.find(l => l.id === business.lotId);
           if (!lot) return business;
 
-          const now = Date.now();
-          const hoursPassed = (now - business.lastCollection) / (1000 * 60 * 60);
-          const income = calculateBusinessIncome(business, lot);
-          const newAccumulated = business.accumulatedIncome + Math.floor(income * hoursPassed);
-
-          // Chance de evento
-          if (!business.activeEvent && Math.random() < 0.001) {
-            const event = generateBusinessEvent(business);
+          const hourlyIncome = calculateBusinessIncome(business, lot);
+          const secondlyIncome = hourlyIncome / 3600;
+          
+          // Verificar e gerar eventos de negócio (1% de chance por segundo)
+          let updatedBusiness = { ...business };
+          if (!updatedBusiness.activeEvent && Math.random() < 0.01) {
+            const event = generateBusinessEvent(updatedBusiness);
             if (event) {
-              toast({
-                title: event.title,
-                description: event.description,
-              });
-              return {
-                ...business,
-                activeEvent: event,
-                accumulatedIncome: newAccumulated,
-                lastCollection: now,
-              };
+              updatedBusiness.activeEvent = event;
             }
           }
-
-          // Processar efeitos de eventos ativos
-          if (business.activeEvent) {
-            const eventDuration = (now - business.activeEvent.timestamp) / 1000;
-            if (eventDuration >= (business.activeEvent.effect.duration || 0)) {
-              return {
-                ...business,
-                activeEvent: null,
-                accumulatedIncome: newAccumulated,
-                lastCollection: now,
-              };
+          
+          // Processar evento ativo
+          if (updatedBusiness.activeEvent) {
+            const eventElapsed = Date.now() - updatedBusiness.activeEvent.timestamp;
+            if (eventElapsed > (updatedBusiness.activeEvent.effect.duration || 0) * 1000) {
+              updatedBusiness.activeEvent = null;
             }
           }
 
           return {
-            ...business,
-            accumulatedIncome: newAccumulated,
-            lastCollection: now,
+            ...updatedBusiness,
+            accumulatedIncome: updatedBusiness.accumulatedIncome + secondlyIncome,
           };
         })
       );
@@ -229,17 +213,25 @@ const Index = () => {
       setLastUpdate(Date.now());
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [player, toast, unlockedAchievements, activeEvent]);
+    // Limpar transações antigas a cada 5 minutos
+    const cleanupInterval = setInterval(() => {
+      setDrugTransactions(prev => cleanOldTransactions(prev));
+    }, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(cleanupInterval);
+    };
+  }, [player, toast, unlockedAchievements, activeEvent, cityLots]);
 
   useEffect(() => {
     if (player) {
-      saveGameState(player, drugOrders, cityLots, businesses);
+      saveGameState(player, drugOrders, cityLots, businesses, drugTransactions);
     }
     if (dailyMissions) {
       localStorage.setItem("crimcity_missions", JSON.stringify(dailyMissions));
     }
-  }, [player, lastUpdate, dailyMissions, drugOrders, cityLots, businesses]);
+  }, [player, lastUpdate, dailyMissions, drugOrders, cityLots, businesses, drugTransactions]);
 
   const handleStartGame = () => {
     if (playerName.trim()) {
@@ -247,7 +239,7 @@ const Index = () => {
       setPlayer(newPlayer);
       const initialLots = generateCityMap();
       setCityLots(initialLots);
-      saveGameState(newPlayer, [], initialLots, []);
+      saveGameState(newPlayer, [], initialLots, [], []);
       toast({
         title: "🎮 Bem-vindo a CrimCity!",
         description: `Boa sorte, ${playerName}!`,
@@ -414,25 +406,30 @@ const Index = () => {
     
     const newOrder = createDrugOrder(drugId, type, orderType, quantity, price, player);
     const orderBook = getOrderBook(drugId, drugOrders);
-    const result = matchOrders(newOrder, orderBook, player);
+    const result = matchOrders(newOrder, orderBook, player, drugTransactions);
     
-    if (result.success) {
+    if (result.success || result.remainingOrder) {
       setPlayer(result.player);
       
-      // Remover ordens correspondidas
+      // Adicionar novas transações
+      if (result.newTransactions.length > 0) {
+        setDrugTransactions(prev => [...prev, ...result.newTransactions]);
+      }
+      
+      // Remover ordens correspondidas do book
       const matchedIds = result.matchedOrders.map(o => o.id);
       setDrugOrders(prev => prev.filter(o => !matchedIds.includes(o.id)));
       
-      // Adicionar ordem restante se houver
+      // Adicionar ordem restante (só para ordens limite)
       if (result.remainingOrder) {
         setDrugOrders(prev => [...prev, result.remainingOrder!]);
       }
     }
     
     toast({
-      title: result.success ? "📊 Ordem executada!" : "❌ Falha na ordem",
+      title: result.success ? "📊 Ordem executada!" : result.remainingOrder ? "📋 Ordem no book" : "❌ Falha",
       description: result.message,
-      variant: result.success ? "default" : "destructive",
+      variant: result.success ? "default" : result.remainingOrder ? "default" : "destructive",
     });
   };
 
