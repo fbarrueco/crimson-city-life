@@ -79,10 +79,15 @@ export const crimes: Crime[] = [
 
 export const weapons: Weapon[] = [
   { id: "knife", name: "Faca", damage: 5, price: 100 },
-  { id: "pistol", name: "Pistola", damage: 15, price: 500 },
-  { id: "shotgun", name: "Escopeta", damage: 30, price: 2000 },
-  { id: "rifle", name: "Rifle", damage: 50, price: 5000 },
-  { id: "ak47", name: "AK-47", damage: 80, price: 15000 },
+  { id: "brass_knuckles", name: "Soco Inglês", damage: 8, price: 250 },
+  { id: "bat", name: "Taco de Baseball", damage: 12, price: 350 },
+  { id: "pistol", name: "Pistola 9mm", damage: 20, price: 800 },
+  { id: "revolver", name: "Revólver .38", damage: 25, price: 1200 },
+  { id: "shotgun", name: "Escopeta 12", damage: 40, price: 2500 },
+  { id: "uzi", name: "Submetralhadora", damage: 45, price: 3500 },
+  { id: "rifle", name: "Rifle de Assalto", damage: 60, price: 5000 },
+  { id: "sniper", name: "Rifle de Precisão", damage: 80, price: 8000 },
+  { id: "rpg", name: "Lança-Foguetes", damage: 150, price: 15000 },
 ];
 
 export const drugTypes = [
@@ -162,33 +167,51 @@ export function updateEnergyRegen(player: Player, lastUpdate: number): Player {
 }
 
 export function calculateCrimeSuccess(crime: Crime, player: Player): boolean {
-  const baseChance = crime.successChance;
+  let successChance = crime.successChance;
   
-  // Bonus de stats (mais equilibrado)
-  const statBonus = (player.stats.intelligence + player.stats.strength) / 20;
+  // Bônus por stats (mais relevantes)
+  successChance += player.stats.strength * 2.5;
+  successChance += player.stats.intelligence * 2;
+  successChance += player.stats.charisma * 1.5;
   
-  // Bonus de nível (reduzido)
-  const levelBonus = player.level * 1.5;
+  // Bônus por nível (mais impactante)
+  successChance += player.level * 4;
   
-  // Bonus de arma (melhor arma = mais sucesso)
-  let weaponBonus = 0;
-  if (player.weapons.length > 0) {
-    const bestWeapon = player.weapons.reduce((a, b) => a.damage > b.damage ? a : b);
-    weaponBonus = bestWeapon.damage / 10;
-  }
-  
-  // Bonus de profissão
-  let professionBonus = 0;
-  if (player.profession) {
-    const prof = professions.find(p => p.id === player.profession);
-    if (prof?.crimeBonus) {
-      professionBonus = prof.crimeBonus;
+  // CRÍTICO: Bônus por DANO das armas (muito mais relevante)
+  const bestWeapon = player.weapons.reduce((best, weapon) => 
+    weapon.damage > (best?.damage || 0) ? weapon : best, 
+    player.weapons[0]
+  );
+  if (bestWeapon) {
+    // Dano da arma é extremamente importante - aumenta muito a chance
+    const weaponBonus = bestWeapon.damage * 0.8; // Multiplica dano por 0.8 para chance
+    successChance += weaponBonus;
+    
+    // Armas poderosas dão bônus adicional para crimes difíceis
+    if (crime.difficulty > 5 && bestWeapon.damage > 30) {
+      successChance += (bestWeapon.damage - 30) * 0.3;
+    }
+  } else {
+    // Penalidade severa por não ter arma em crimes difíceis
+    if (crime.difficulty > 3) {
+      successChance -= crime.difficulty * 5;
     }
   }
   
-  const finalChance = Math.min(95, baseChance + statBonus + levelBonus + weaponBonus + professionBonus);
+  // Bônus por profissão
+  if (player.profession) {
+    const prof = professions.find(p => p.id === player.profession);
+    if (prof) {
+      successChance += prof.crimeBonus;
+    }
+  }
   
-  return Math.random() * 100 < finalChance;
+  // Cap em 95% (sempre há risco)
+  successChance = Math.min(successChance, 95);
+  // Mínimo de 5% (sempre há chance)
+  successChance = Math.max(successChance, 5);
+  
+  return Math.random() * 100 < successChance;
 }
 
 export function executeCrime(crime: Crime, player: Player): { player: Player; success: boolean; message: string } {
