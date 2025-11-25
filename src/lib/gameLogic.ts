@@ -133,13 +133,14 @@ export function createNewPlayer(name: string): Player {
   };
 }
 
-export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: any[] = [], businesses: any[] = []): void {
+export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: any[] = [], businesses: any[] = [], drugTransactions: any[] = []): void {
   const gameState: GameState = {
     player,
     lastUpdate: Date.now(),
     drugOrders,
     cityLots,
     businesses,
+    drugTransactions,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
 }
