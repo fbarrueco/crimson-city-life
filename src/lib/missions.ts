@@ -128,17 +128,20 @@ export function canCompleteMission(mission: Mission, player: any): boolean {
   return progress >= target;
 }
 
-export function getAvailableMissions(player: any, completedMissions: string[]): Mission[] {
+export function getAvailableMissions(player: any, completedMissions: string[] = []): Mission[] {
+  // Garantir que completedMissions é um array
+  const completed = completedMissions || [];
+  
   return storyMissions.filter(mission => {
     // Já completou
-    if (completedMissions.includes(mission.id)) return false;
+    if (completed.includes(mission.id)) return false;
     
     // Nível insuficiente
     if (player.level < mission.unlockLevel) return false;
     
     // Verifica se a missão anterior foi completada (se houver)
     const prevMission = storyMissions.find(m => m.nextMission === mission.id);
-    if (prevMission && !completedMissions.includes(prevMission.id)) return false;
+    if (prevMission && !completed.includes(prevMission.id)) return false;
     
     return true;
   });

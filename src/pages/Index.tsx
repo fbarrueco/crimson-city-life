@@ -654,7 +654,7 @@ const Index = () => {
     if (!skill) return;
     
     // Verificar se pode desbloquear
-    if (player.skillPoints < skill.cost) {
+    if ((player.skillPoints || 0) < skill.cost) {
       toast({
         title: "❌ Pontos insuficientes",
         description: `Você precisa de ${skill.cost} pontos de habilidade.`,
@@ -663,7 +663,7 @@ const Index = () => {
       return;
     }
     
-    if (player.unlockedSkills.includes(skillId)) {
+    if (player.unlockedSkills?.includes(skillId)) {
       toast({
         title: "⚠️ Já desbloqueada",
         description: "Você já possui esta habilidade.",
@@ -674,7 +674,7 @@ const Index = () => {
     
     if (skill.requires) {
       const missingRequirements = skill.requires.filter(
-        reqId => !player.unlockedSkills.includes(reqId)
+        reqId => !(player.unlockedSkills || []).includes(reqId)
       );
       if (missingRequirements.length > 0) {
         toast({
@@ -689,8 +689,8 @@ const Index = () => {
     // Desbloquear
     setPlayer({
       ...player,
-      skillPoints: player.skillPoints - skill.cost,
-      unlockedSkills: [...player.unlockedSkills, skillId],
+      skillPoints: (player.skillPoints || 0) - skill.cost,
+      unlockedSkills: [...(player.unlockedSkills || []), skillId],
     });
     
     toast({
@@ -714,7 +714,7 @@ const Index = () => {
       return;
     }
     
-    if (player.completedMissions.includes(missionId)) {
+    if (player.completedMissions?.includes(missionId)) {
       toast({
         title: "⚠️ Já completada",
         description: "Você já completou esta missão.",
@@ -728,9 +728,9 @@ const Index = () => {
       ...player,
       money: player.money + mission.reward.money,
       respect: player.respect + mission.reward.respect,
-      skillPoints: player.skillPoints + (mission.reward.skillPoints || 0),
-      completedMissions: [...player.completedMissions, missionId],
-      storyProgress: player.storyProgress + 1,
+      skillPoints: (player.skillPoints || 0) + (mission.reward.skillPoints || 0),
+      completedMissions: [...(player.completedMissions || []), missionId],
+      storyProgress: (player.storyProgress || 0) + 1,
     });
     
     toast({
@@ -867,7 +867,7 @@ const Index = () => {
                     Complete missões de história para desbloquear a narrativa da cidade e ganhar recompensas poderosas.
                   </p>
                   <div className="space-y-4">
-                    {getAvailableMissions(player, player.completedMissions).map(mission => {
+                    {getAvailableMissions(player, player.completedMissions || []).map(mission => {
                       const progress = getMissionProgress(mission, player);
                       const target = typeof mission.requirement.target === "string" ? 1 : mission.requirement.target;
                       const canComplete = canCompleteMission(mission, player);
@@ -920,10 +920,10 @@ const Index = () => {
                       );
                     })}
                     
-                    {player.completedMissions.length > 0 && (
+                    {(player.completedMissions?.length || 0) > 0 && (
                       <Card className="p-4 bg-success/10 border-success">
                         <p className="text-sm text-muted-foreground text-center">
-                          ✅ Missões completadas: {player.completedMissions.length}/{storyMissions.length}
+                          ✅ Missões completadas: {player.completedMissions?.length || 0}/{storyMissions.length}
                         </p>
                       </Card>
                     )}
