@@ -26,6 +26,16 @@ export const crimes: Crime[] = [
     successChance: 95,
   },
   {
+    id: "pickpocket",
+    name: "Bater Carteira",
+    difficulty: 1,
+    reward: 75,
+    respect: 2,
+    energyCost: 6,
+    requiredLevel: 1,
+    successChance: 85,
+  },
+  {
     id: "car_radio",
     name: "Roubar Rádio de Carro",
     difficulty: 2,
@@ -34,6 +44,16 @@ export const crimes: Crime[] = [
     energyCost: 8,
     requiredLevel: 1,
     successChance: 75,
+  },
+  {
+    id: "shoplift",
+    name: "Furtar em Loja",
+    difficulty: 2,
+    reward: 150,
+    respect: 3,
+    energyCost: 10,
+    requiredLevel: 2,
+    successChance: 70,
   },
   {
     id: "store",
@@ -46,6 +66,16 @@ export const crimes: Crime[] = [
     successChance: 65,
   },
   {
+    id: "car_theft",
+    name: "Roubar Carro",
+    difficulty: 3,
+    reward: 400,
+    respect: 7,
+    energyCost: 18,
+    requiredLevel: 3,
+    successChance: 60,
+  },
+  {
     id: "pharmacy",
     name: "Roubar Farmácia",
     difficulty: 4,
@@ -54,6 +84,16 @@ export const crimes: Crime[] = [
     energyCost: 20,
     requiredLevel: 3,
     successChance: 55,
+  },
+  {
+    id: "atm",
+    name: "Explodir Caixa Eletrônico",
+    difficulty: 4,
+    reward: 800,
+    respect: 12,
+    energyCost: 25,
+    requiredLevel: 4,
+    successChance: 50,
   },
   {
     id: "jewelry",
@@ -66,6 +106,26 @@ export const crimes: Crime[] = [
     successChance: 45,
   },
   {
+    id: "armored_car",
+    name: "Roubar Carro-Forte",
+    difficulty: 6,
+    reward: 2500,
+    respect: 35,
+    energyCost: 35,
+    requiredLevel: 6,
+    successChance: 40,
+  },
+  {
+    id: "casino",
+    name: "Assaltar Cassino",
+    difficulty: 6,
+    reward: 3500,
+    respect: 40,
+    energyCost: 38,
+    requiredLevel: 7,
+    successChance: 38,
+  },
+  {
     id: "bank",
     name: "Roubar Banco",
     difficulty: 7,
@@ -74,6 +134,26 @@ export const crimes: Crime[] = [
     energyCost: 40,
     requiredLevel: 8,
     successChance: 30,
+  },
+  {
+    id: "federal_reserve",
+    name: "Assaltar Banco Central",
+    difficulty: 9,
+    reward: 15000,
+    respect: 100,
+    energyCost: 50,
+    requiredLevel: 10,
+    successChance: 20,
+  },
+  {
+    id: "art_heist",
+    name: "Roubar Museu de Arte",
+    difficulty: 8,
+    reward: 10000,
+    respect: 80,
+    energyCost: 45,
+    requiredLevel: 9,
+    successChance: 25,
   },
 ];
 
@@ -130,10 +210,17 @@ export function createNewPlayer(name: string): Player {
     crimes: 0,
     successfulCrimes: 0,
     businesses: [],
+    skillPoints: 0,
+    unlockedSkills: [],
+    activeMissions: [],
+    completedMissions: [],
+    storyProgress: 0,
+    totalDrugsSold: 0,
+    totalTrainings: 0,
   };
 }
 
-export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: any[] = [], businesses: any[] = [], drugTransactions: any[] = []): void {
+export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: any[] = [], businesses: any[] = [], drugTransactions: any[] = [], activeEvent: any = null): void {
   const gameState: GameState = {
     player,
     lastUpdate: Date.now(),
@@ -141,6 +228,7 @@ export function saveGameState(player: Player, drugOrders: any[] = [], cityLots: 
     cityLots,
     businesses,
     drugTransactions,
+    activeEvent,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
 }

@@ -1,6 +1,6 @@
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
-import { Swords, Dumbbell, Hospital, Landmark, Crosshair, Pill, Trophy, ListTodo, BarChart3, Briefcase, Building2, Settings } from "lucide-react";
+import { Swords, Dumbbell, Hospital, Landmark, Crosshair, Pill, Trophy, ListTodo, BarChart3, Briefcase, Building2, Settings, Book, Sparkles } from "lucide-react";
 
 interface GameSidebarProps {
   activeSection: string;
@@ -17,7 +17,9 @@ const sections = [
   { id: "drugs", label: "Drogas", icon: Pill },
   { id: "businesses", label: "Mapa da Cidade", icon: Building2 },
   { id: "manage_businesses", label: "Meus Negócios", icon: Settings },
-  { id: "missions", label: "Missões", icon: ListTodo },
+  { id: "story", label: "História", icon: Book },
+  { id: "skills", label: "Habilidades", icon: Sparkles },
+  { id: "missions", label: "Missões Diárias", icon: ListTodo },
   { id: "achievements", label: "Conquistas", icon: Trophy },
   { id: "overview", label: "Estatísticas", icon: BarChart3 },
 ];
