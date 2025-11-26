@@ -26,6 +26,13 @@ export interface Player {
   crimes: number;
   successfulCrimes: number;
   businesses: string[];
+  skillPoints: number;
+  unlockedSkills: string[];
+  activeMissions: string[];
+  completedMissions: string[];
+  storyProgress: number;
+  totalDrugsSold: number;
+  totalTrainings: number;
 }
 
 export interface Crime {
@@ -132,6 +139,43 @@ export interface Business {
   quality: number;
 }
 
+export interface Mission {
+  id: string;
+  name: string;
+  description: string;
+  storyText: string;
+  npcName: string;
+  npcAvatar: string;
+  requirement: {
+    type: "crime" | "money" | "level" | "stat" | "weapon" | "business";
+    target: number | string;
+    current?: number;
+  };
+  reward: {
+    money: number;
+    respect: number;
+    skillPoints?: number;
+    item?: string;
+  };
+  unlockLevel: number;
+  nextMission?: string;
+}
+
+export interface GlobalEvent {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  startTime: number;
+  duration: number;
+  effects: {
+    crimeSuccessModifier?: number;
+    crimeRewardModifier?: number;
+    drugPriceModifier?: number;
+    energyRegenModifier?: number;
+  };
+}
+
 export interface GameState {
   player: Player;
   lastUpdate: number;
@@ -139,4 +183,5 @@ export interface GameState {
   cityLots: CityLot[];
   businesses: Business[];
   drugTransactions: DrugTransaction[];
+  activeEvent: GlobalEvent | null;
 }

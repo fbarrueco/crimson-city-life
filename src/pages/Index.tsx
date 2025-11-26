@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Player, Crime, Weapon, Profession, DrugOrder, CityLot, Business, DrugTransaction } from "@/types/game";
+import { Player, Crime, Weapon, Profession, DrugOrder, CityLot, Business, DrugTransaction, GlobalEvent, Mission } from "@/types/game";
 import { DailyMission, CityEvent } from "@/types/achievements";
 import {
   createNewPlayer,
@@ -16,9 +16,11 @@ import {
   trainStat,
   professions,
 } from "@/lib/gameLogic";
-import { checkAchievements, generateDailyMissions, getRandomEvent } from "@/lib/achievements";
+import { checkAchievements, generateDailyMissions, getRandomEvent, cityEvents } from "@/lib/achievements";
 import { generateCityMap, businessTypes, calculateBusinessIncome, getUpgradeCost, generateBusinessEvent, employeeTypes } from "@/lib/cityMap";
 import { createDrugOrder, matchOrders, getOrderBook, cleanOldTransactions } from "@/lib/drugMarket";
+import { storyMissions, getAvailableMissions, canCompleteMission, getMissionProgress } from "@/lib/missions";
+import { skillTree, Skill } from "@/types/skills";
 import { GameHeader } from "@/components/GameHeader";
 import { GameSidebar } from "@/components/GameSidebar";
 import { CrimesSection } from "@/components/sections/CrimesSection";
@@ -34,9 +36,11 @@ import { ProfessionSection } from "@/components/sections/ProfessionSection";
 import { EnhancedDrugsSection } from "@/components/sections/EnhancedDrugsSection";
 import { CityMapSection } from "@/components/sections/CityMapSection";
 import { BusinessManagementSection } from "@/components/sections/BusinessManagementSection";
+import { SkillTreeSection } from "@/components/sections/SkillTreeSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
@@ -47,6 +51,7 @@ const Index = () => {
   const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>([]);
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(generateDailyMissions());
   const [activeEvent, setActiveEvent] = useState<(CityEvent & { timeLeft: number }) | null>(null);
+  const [globalEvent, setGlobalEvent] = useState<GlobalEvent | null>(null);
   const [drugOrders, setDrugOrders] = useState<DrugOrder[]>([]);
   const [cityLots, setCityLots] = useState<CityLot[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -69,6 +74,7 @@ const Index = () => {
       }
       if (savedState.businesses) setBusinesses(savedState.businesses);
       if (savedState.drugTransactions) setDrugTransactions(savedState.drugTransactions);
+      if (savedState.activeEvent) setGlobalEvent(savedState.activeEvent);
     } else {
       // Inicializar mapa para novo jogo
       setCityLots(generateCityMap());
@@ -226,12 +232,12 @@ const Index = () => {
 
   useEffect(() => {
     if (player) {
-      saveGameState(player, drugOrders, cityLots, businesses, drugTransactions);
+      saveGameState(player, drugOrders, cityLots, businesses, drugTransactions, globalEvent);
     }
     if (dailyMissions) {
       localStorage.setItem("crimcity_missions", JSON.stringify(dailyMissions));
     }
-  }, [player, lastUpdate, dailyMissions, drugOrders, cityLots, businesses, drugTransactions]);
+  }, [player, lastUpdate, dailyMissions, drugOrders, cityLots, businesses, drugTransactions, globalEvent]);
 
   const handleStartGame = () => {
     if (playerName.trim()) {
@@ -239,7 +245,7 @@ const Index = () => {
       setPlayer(newPlayer);
       const initialLots = generateCityMap();
       setCityLots(initialLots);
-      saveGameState(newPlayer, [], initialLots, [], []);
+      saveGameState(newPlayer, [], initialLots, [], [], null);
       toast({
         title: "🎮 Bem-vindo a CrimCity!",
         description: `Boa sorte, ${playerName}!`,
@@ -641,6 +647,98 @@ const Index = () => {
     });
   };
 
+  const handleUnlockSkill = (skillId: string) => {
+    if (!player) return;
+    
+    const skill = skillTree.find(s => s.id === skillId);
+    if (!skill) return;
+    
+    // Verificar se pode desbloquear
+    if (player.skillPoints < skill.cost) {
+      toast({
+        title: "❌ Pontos insuficientes",
+        description: `Você precisa de ${skill.cost} pontos de habilidade.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (player.unlockedSkills.includes(skillId)) {
+      toast({
+        title: "⚠️ Já desbloqueada",
+        description: "Você já possui esta habilidade.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (skill.requires) {
+      const missingRequirements = skill.requires.filter(
+        reqId => !player.unlockedSkills.includes(reqId)
+      );
+      if (missingRequirements.length > 0) {
+        toast({
+          title: "❌ Requisitos não atendidos",
+          description: "Desbloqueie as habilidades anteriores primeiro.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    // Desbloquear
+    setPlayer({
+      ...player,
+      skillPoints: player.skillPoints - skill.cost,
+      unlockedSkills: [...player.unlockedSkills, skillId],
+    });
+    
+    toast({
+      title: "🌟 Habilidade Desbloqueada!",
+      description: `${skill.icon} ${skill.name}: ${skill.description}`,
+    });
+  };
+
+  const handleCompleteStoryMission = (missionId: string) => {
+    if (!player) return;
+    
+    const mission = storyMissions.find(m => m.id === missionId);
+    if (!mission) return;
+    
+    if (!canCompleteMission(mission, player)) {
+      toast({
+        title: "❌ Missão incompleta",
+        description: "Você ainda não cumpriu os requisitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (player.completedMissions.includes(missionId)) {
+      toast({
+        title: "⚠️ Já completada",
+        description: "Você já completou esta missão.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Completar missão
+    setPlayer({
+      ...player,
+      money: player.money + mission.reward.money,
+      respect: player.respect + mission.reward.respect,
+      skillPoints: player.skillPoints + (mission.reward.skillPoints || 0),
+      completedMissions: [...player.completedMissions, missionId],
+      storyProgress: player.storyProgress + 1,
+    });
+    
+    toast({
+      title: `🎭 Missão Completa: ${mission.name}`,
+      description: `+$${mission.reward.money}, +${mission.reward.respect} respeito, +${mission.reward.skillPoints || 0} pontos de habilidade`,
+    });
+  };
+
   if (!player) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -760,6 +858,82 @@ const Index = () => {
                 <MissionsSection
                   missions={dailyMissions}
                   onClaimReward={handleClaimMissionReward}
+                />
+              )}
+              {activeSection === "story" && (
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground mb-4">📖 História</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Complete missões de história para desbloquear a narrativa da cidade e ganhar recompensas poderosas.
+                  </p>
+                  <div className="space-y-4">
+                    {getAvailableMissions(player, player.completedMissions).map(mission => {
+                      const progress = getMissionProgress(mission, player);
+                      const target = typeof mission.requirement.target === "string" ? 1 : mission.requirement.target;
+                      const canComplete = canCompleteMission(mission, player);
+                      
+                      return (
+                        <Card key={mission.id} className={`p-6 border-border ${canComplete ? "bg-accent/10 border-accent" : "bg-card"}`}>
+                          <div className="flex items-start gap-4 mb-4">
+                            <div className="text-5xl">{mission.npcAvatar}</div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-xl font-bold text-foreground">{mission.name}</h3>
+                                <Badge variant="outline">Nível {mission.unlockLevel}</Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">{mission.npcName}</p>
+                              <p className="text-foreground italic mb-3">"{mission.storyText}"</p>
+                              <p className="text-sm text-muted-foreground">{mission.description}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-muted/30 p-4 rounded-lg mb-4">
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="text-muted-foreground">Progresso:</span>
+                              <span className="text-foreground font-bold">{progress}/{target}</span>
+                            </div>
+                            <div className="w-full bg-muted rounded-full h-2">
+                              <div 
+                                className="bg-accent rounded-full h-2 transition-all"
+                                style={{ width: `${Math.min((progress / target) * 100, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex gap-4 text-sm">
+                              <span className="text-accent font-bold">+${mission.reward.money}</span>
+                              <span className="text-primary">+{mission.reward.respect} respeito</span>
+                              {mission.reward.skillPoints && (
+                                <span className="text-foreground">+{mission.reward.skillPoints} 🌟</span>
+                              )}
+                            </div>
+                            <Button
+                              onClick={() => handleCompleteStoryMission(mission.id)}
+                              disabled={!canComplete}
+                              variant={canComplete ? "default" : "outline"}
+                            >
+                              {canComplete ? "Completar" : "Continuar"}
+                            </Button>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                    
+                    {player.completedMissions.length > 0 && (
+                      <Card className="p-4 bg-success/10 border-success">
+                        <p className="text-sm text-muted-foreground text-center">
+                          ✅ Missões completadas: {player.completedMissions.length}/{storyMissions.length}
+                        </p>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              )}
+              {activeSection === "skills" && (
+                <SkillTreeSection
+                  player={player}
+                  onUnlockSkill={handleUnlockSkill}
                 />
               )}
               {activeSection === "achievements" && (
